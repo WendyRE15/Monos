@@ -1,0 +1,245 @@
+---
+title: "Monos"
+author: "Wendy Fonseca"
+date: "25/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Inicializacion de la carga de datos para realizar el trabajo
+
+```{r message=FALSE, warning=FALSE}
+library(sf)
+library(dplyr)
+library(plotly)
+library(DT)
+library(spData)
+library(leaflet)
+library(raster)
+
+## Se cargan los datos
+
+monos_cr <-
+  st_read(
+    "https://raw.githubusercontent.com/gf0604-procesamientodatosgeograficos/2021i-datos/main/gbif/primates-cr-registros.csv",
+    options = c(
+      "X_POSSIBLE_NAMES=decimalLongitude",
+      "Y_POSSIBLE_NAMES=decimalLatitude",
+      quiet = TRUE
+    )
+  )
+cantones <-
+  st_read(
+    "https://raw.githubusercontent.com/gf0604-procesamientodatosgeograficos/2021i-datos/main/ign/delimitacion-territorial-administrativa/cr_cantones_simp_wgs84.geojson",
+    quiet = TRUE
+  )
+provincias <-
+  st_read(
+    "https://raw.githubusercontent.com/gf0604-procesamientodatosgeograficos/2021i-datos/main/ign/delimitacion-territorial-administrativa/cr_provincias_simp_wgs84.geojson",
+    quiet = TRUE
+    )
+## Se asigna coordenadas y se ingresa la capa cantones al data frame monos_cr
+
+st_crs(cantones) = 4326
+st_crs(monos_cr) = 4326
+
+monos_cr <-
+  monos_cr %>%
+  st_join(cantones["canton"])
+```
+
+## Se crea la tabla 1 traducida al español
+
+```{r message=FALSE, warning=FALSE}
+monos_cr %>%
+  st_drop_geometry()%>%
+  dplyr::select(stateProvince,canton,family, species, eventDate) %>%
+  datatable(
+  colnames = c("Provincia", "Canton", "Especie", "Familia", "Fecha"),
+  options = list( searchHighlight = TRUE,language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json')
+    )
+  )
+```
+
+## Se hace un filtro para contar las especies
+
+```{r message=FALSE, warning=FALSE}
+a <- monos_cr %>% dplyr::select(species)%>%
+  filter(species == "Alouatta palliata")
+b <- monos_cr %>% dplyr::select(species)%>%
+  filter(species == "Alouatta palliata")
+c <- monos_cr %>% dplyr::select(species)%>%
+  filter(species == "Alouatta palliata")
+d <- monos_cr %>% dplyr::select(species)%>%
+  filter(species == "Alouatta palliata")
+
+```
+
+## Se crea el grafico pastel
+
+```{r message=FALSE, warning=FALSE}
+monos_cr %>%
+  plot_ly(
+    labels = ~c("Mono aullador","Mono ardilla","Mono araña","Mono carablanca"
+                 ),
+    values = ~c(1994, 599, 453, 1463),
+    type = "pie")%>%
+  config(locale = "es")%>%
+  layout(
+    title = "Monos de Costa Rica",
+    xaxis = list(showgrid = FALSE,zeroline = FALSE,showticklabels = FALSE
+    ),
+    yaxis = list( showgrid = FALSE,zeroline = FALSE, showticklabels = FALSE
+    )
+  )
+```
+
+## Se crea un raster y se le asigna un color
+
+```{r message=FALSE, warning=FALSE}
+alt <- getData(
+  "worldclim",
+  var = "alt",
+  res = .5,
+  lon = -84,
+  lat = 10
+)
+
+altitud <-alt %>% crop(provincias) %>% mask(provincias)
+
+col <- colorNumeric(c("66CC00", "yellow", "red"),
+                     values(altitud),
+                     na.color = "transparent")
+```
+
+Se hace el procedimiento para filtrar los datos 
+
+```{r message=FALSE, warning=FALSE}
+## Creacion de los filtros para los popups
+
+Aullador <- monos_cr %>%
+  dplyr::select(species,
+         stateProvince,
+         canton,
+         eventDate) %>%
+  filter(species == "Alouatta palliata")
+
+Ardilla <- monos_cr %>%
+  dplyr::select(species,
+         stateProvince,
+         canton,
+         eventDate) %>%
+  filter(species == "Saimiri oerstedii")
+
+Araña <- monos_cr %>%
+  dplyr::select(species,
+         stateProvince,
+         canton,
+         eventDate) %>%
+  filter(species == "Ateles geoffroyi")
+
+Carablanca <- monos_cr %>%
+  dplyr::select(species,
+         stateProvince,
+         canton,
+         eventDate) %>%
+  filter(species == "Cebus capucinus")
+
+## cotneido de popup
+
+pAullador <- paste0((Aullador$species),
+              "<br>",
+              (Aullador$provincia),
+              "<br>",
+              (Aullador$canton),
+              "<br>",
+              (Aullador$eventDate))
+pAraña <- paste0((Aullador$species),
+              "<br>",
+              (Araña$provincia),
+              "<br>",
+              (Araña$canton),
+              "<br>",
+              (Araña$eventDate))
+pArdilla <- paste0((Aullador$species),
+              "<br>",
+              (Ardilla$provincia),
+              "<br>",
+              (Ardilla$canton),
+              "<br>",
+              (Ardilla$eventDate))
+pCarablanca <- paste0((Aullador$species),
+              "<br>",
+              (Aullador$provincia),
+              "<br>",
+              (Aullador$canton),
+              "<br>",
+              (Aullador$eventDate))
+```
+
+## Se crea el mapa
+
+```{r message=FALSE, warning=FALSE}
+monos_cr %>%
+  leaflet() %>%
+  addProviderTiles(providers$OpenStreetMap.Mapnik, group = "OpenStreetMap") %>%
+  addProviderTiles(providers$Stamen.TonerLite, group = "Stamen Toner Lite") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Imágenes de ESRI") %>%
+  addRasterImage(
+    altitud, 
+    colors = col, 
+    opacity = 0.8,
+    group = "Altitud") %>%
+  addCircleMarkers(
+    data = Aullador,
+    stroke = F,
+    radius = 4,
+    fillColor = "#00FFCC",
+    fillOpacity = 1,
+    popup = pAullador,
+    group = "Mono aullador"
+  ) %>%
+  addCircleMarkers(
+    data = Ardilla,
+    stroke = F,
+    radius = 4,
+    fillColor = "blue",
+    fillOpacity = 1,
+    popup = pArdilla,
+    group = "Mono ardilla"
+  ) %>%
+  addCircleMarkers(
+    data = Araña,
+    stroke = F,
+    radius = 4,
+    fillColor = "#CC0033",
+    fillOpacity = 1,
+    popup = pAraña,
+    group = "Mono araña"
+  ) %>%
+  addCircleMarkers(
+    data = Carablanca,
+    stroke = F,
+    radius = 4,
+    fillColor = "#00CC00",
+    fillOpacity = 1,
+    popup = pCarablanca,
+    group = "Mono carablanca"
+  ) %>%
+  addLayersControl(
+    baseGroups = c("OpenStreetMap", "Stamen Toner Lite", 
+                   "Imágenes de ESRI"),
+    overlayGroups = c("Mono aullador", "Mono ardilla", 
+                      "Mono araña", "Mono carablanca"
+                      ,"Altitud")
+  ) %>%
+  addMiniMap(tiles = providers$Stamen.OpenStreetMap.Mapnik,
+             position = "bottomleft",
+             toggleDisplay = TRUE
+  )
+```
+
+
